@@ -1,5 +1,6 @@
 const express = require('express');
 const fetch = require('node-fetch');
+//const Client4 = require('mattermost-redux/client');
 
 const app = express();
 app.use(express.json());
@@ -91,6 +92,10 @@ app.post(['/send/form', '/send-modal/submit'], (req, res) => {
             ],
             call: {
                 path: '/send',
+                expand: {
+                    acting_user_access_token: 'all',
+                    // bot_access_token: 'all',
+                },
             },
         },
     });
@@ -120,11 +125,17 @@ app.post('/send/submit', async (req, res) => {
     const channelid = call.values.channelname.value;
     const botuserid = call.context.bot_user_id;
 
+    // const client = new Client4();
+    // client.setUrl(call.context.mattermost_site_url);
+    // client.setToken(call.context.bot_access_token);
+
+    // client.
+
     // Use the app bot to do API calls
     const options = {
         method: 'POST',
         headers: {
-            Authorization: 'BEARER ' + call.context.bot_access_token,
+            Authorization: 'BEARER ' + call.context.admin_access_token,
             'Content-Type': 'application/json',
         },
         body: JSON.stringify(users),
@@ -143,12 +154,10 @@ app.post('/send/submit', async (req, res) => {
     //POST - Sending the membership object
     options.body = JSON.stringify(teammembership);
 
-    const jointeam = await fetch(mattermostSiteURL + '/api/v4/teams/' + teamid + '/members', options).
-        then((res) => {
-            console.log(res)
-            return res.json()
-        })
-    
+    const joinTeamURL = mattermostSiteURL + '/api/v4/teams/' + teamid + '/members';
+    console.log(call)
+    const joinTeam = await makeRequest(joinTeamURL, call.context.acting_user_access_token, teammembership);
+
     const channelmembership = {
         user_id: botuserid,
     }
@@ -156,8 +165,9 @@ app.post('/send/submit', async (req, res) => {
     //Note - does this make any sense?
     options.body = JSON.stringify(channelmembership);
     //Note - fix this to use the right api
-    const joinchannel = await fetch(mattermostSiteURL + '/api/v4/channels/' + channelid + '/members', options).
-    then((res) => res.json())
+
+    const joinChannelURL = mattermostSiteURL + '/api/v4/channels/' + channelid + '/members';
+    const joinchannel = await makeRequest(joinChannelURL, call.context.acting_user_access_token, channelmembership);
 
     //OLD API call to create direct message
     // const channel = await fetch(mattermostSiteURL + '/api/v4/channels/direct', options).
@@ -190,11 +200,31 @@ app.post('/send/submit', async (req, res) => {
     // Create a post
     options.body = JSON.stringify(post);
 
-    fetch(mattermostSiteURL + '/api/v4/posts', options);
-
+    const createPostURL = mattermostSiteURL + '/api/v4/posts';
+    const createPost = await makeRequest(createPostURL, call.context.bot_access_token, post)
 
     res.json({
         type: 'ok',
         markdown: 'Created a post in your DM channel.'
     });
 });
+
+const makeRequest = async (url, token, body) => {
+    const options = {
+        method: 'POST',
+        headers: {
+            Authorization: 'BEARER ' + token,
+            'Content-Type': 'application/json',
+        },
+    };
+
+    if (body) {
+        options.body = JSON.stringify(body);
+    }
+
+    console.log(options);
+
+    const res = await fetch(url, options).then(r => r.json());
+    console.log(res);
+    return res;
+}
